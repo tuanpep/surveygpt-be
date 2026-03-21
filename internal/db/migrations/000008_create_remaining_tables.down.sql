@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS webhooks;
+DROP TABLE IF EXISTS usage_logs;
+DROP TABLE IF EXISTS integrations;
+DROP TABLE IF EXISTS files;
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS api_keys;
+DROP TABLE IF EXISTS analytics_cache;
+DROP TABLE IF EXISTS ai_credits;

@@ -1,0 +1,3085 @@
+openapi: 3.0.3
+info:
+  title: SurveyFlow API
+  description: SurveyFlow backend API for creating, distributing, and analyzing surveys.
+  version: 1.0.0
+  contact:
+    name: SurveyFlow
+    email: api@surveyflow.io
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    description: Authentication & user management
+  - name: Users
+    description: Current user profile
+  - name: Organizations
+    description: Organization & team management
+  - name: Surveys
+    description: Survey CRUD & lifecycle
+  - name: Responses
+    description: Survey response submission & management
+  - name: Analytics
+    description: Survey analytics & insights
+  - name: Templates
+    description: Survey templates
+  - name: Distribution
+    description: Email lists & sharing
+  - name: Billing
+    description: Plans & subscriptions
+  - name: Health
+    description: Health & readiness checks
+
+paths:
+  /health:
+    get:
+      operationId: healthCheck
+      tags: [Health]
+      summary: Health check
+      description: Returns service health status including database and Redis.
+      security: []
+      responses:
+        "200":
+          description: Service is healthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /healthz:
+    get:
+      operationId: healthz
+      tags: [Health]
+      summary: Healthz check
+      description: Alias for /health.
+      security: []
+      responses:
+        "200":
+          description: Service is healthy or degraded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /ready:
+    get:
+      operationId: readinessCheck
+      tags: [Health]
+      summary: Readiness check
+      description: Checks if the service is ready to accept requests.
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+        "503":
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/register:
+    post:
+      operationId: register
+      tags: [Auth]
+      summary: Register
+      description: Create a new user account and organization.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      tags: [Auth]
+      summary: Login
+      description: Authenticate with email and password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/login/2fa:
+    post:
+      operationId: login2FA
+      tags: [Auth]
+      summary: Login with 2FA
+      description: Verify a two-factor authentication code.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email:
+                  type: string
+                  format: email
+                code:
+                  type: string
+      responses:
+        "200":
+          description: 2FA verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshToken
+      tags: [Auth]
+      summary: Refresh token
+      description: Exchange a refresh token for new access and refresh tokens.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [Auth]
+      summary: Forgot password
+      description: Request a password reset email. Always returns 200.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Reset email sent (always)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Reset password
+      description: Reset password using a token from the forgot-password email.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, new_password]
+              properties:
+                token:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 8
+                  maxLength: 128
+      responses:
+        "200":
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/me:
+    get:
+      operationId: getMe
+      tags: [Users]
+      summary: Get current user
+      description: Return the authenticated user's profile.
+      responses:
+        "200":
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: updateMe
+      tags: [Users]
+      summary: Update profile
+      description: Update the current user's name or avatar.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserRequest"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /api/v1/me/password:
+    put:
+      operationId: changePassword
+      tags: [Users]
+      summary: Change password
+      description: Change the current user's password.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePasswordRequest"
+      responses:
+        "200":
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          description: Current password is incorrect
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/me/avatar:
+    post:
+      operationId: uploadAvatar
+      tags: [Users]
+      summary: Upload avatar
+      description: Upload a profile avatar image.
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/me/account:
+    delete:
+      operationId: deleteAccount
+      tags: [Users]
+      summary: Delete account
+      description: Permanently delete the user account.
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/me/2fa/enable:
+    post:
+      operationId: enable2FA
+      tags: [Users]
+      summary: Enable 2FA
+      description: Enable two-factor authentication.
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/me/2fa/disable:
+    post:
+      operationId: disable2FA
+      tags: [Users]
+      summary: Disable 2FA
+      description: Disable two-factor authentication.
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/me/2fa/verify:
+    post:
+      operationId: verify2FA
+      tags: [Users]
+      summary: Verify 2FA
+      description: Verify a 2FA setup code.
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/organizations:
+    post:
+      operationId: createOrganization
+      tags: [Organizations]
+      summary: Create organization
+      description: Create a new organization.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "201":
+          description: Organization created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "409":
+          description: Slug already taken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/organizations/me:
+    get:
+      operationId: getMyOrganization
+      tags: [Organizations]
+      summary: Get my organization
+      description: Get the current user's organization.
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+    put:
+      operationId: updateMyOrganization
+      tags: [Organizations]
+      summary: Update my organization
+      description: Update the current user's organization.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgRequest"
+      responses:
+        "200":
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+
+  /api/v1/organizations/{orgId}:
+    get:
+      operationId: getOrganization
+      tags: [Organizations]
+      summary: Get organization
+      description: Get an organization by ID (user must be a member).
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      responses:
+        "200":
+          description: Organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "404":
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: updateOrganization
+      tags: [Organizations]
+      summary: Update organization
+      description: Update an organization by ID.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgRequest"
+      responses:
+        "200":
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+    delete:
+      operationId: deleteOrganization
+      tags: [Organizations]
+      summary: Delete organization
+      description: Delete an organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/organizations/{orgId}/members:
+    get:
+      operationId: listMembers
+      tags: [Organizations]
+      summary: List members
+      description: List all members of an organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      responses:
+        "200":
+          description: Member list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrgMember"
+
+  /api/v1/organizations/{orgId}/members/invite:
+    post:
+      operationId: inviteMember
+      tags: [Organizations]
+      summary: Invite member
+      description: Invite a new member to the organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+      responses:
+        "201":
+          description: Invitation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invitation"
+        "409":
+          description: Already a member or invitation pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/organizations/{orgId}/members/{memberId}/role:
+    patch:
+      operationId: updateMemberRole
+      tags: [Organizations]
+      summary: Update member role
+      description: Change a member's role in the organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/MemberId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [owner, admin, member, viewer]
+      responses:
+        "200":
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Cannot change owner role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/organizations/{orgId}/members/{memberId}:
+    delete:
+      operationId: removeMember
+      tags: [Organizations]
+      summary: Remove member
+      description: Remove a member from the organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: Cannot remove owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/organizations/{orgId}/invitations:
+    get:
+      operationId: listInvitations
+      tags: [Organizations]
+      summary: List invitations
+      description: List pending invitations for an organization.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+      responses:
+        "200":
+          description: Invitation list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invitation"
+
+  /api/v1/invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [Organizations]
+      summary: Accept invitation
+      description: Accept an organization invitation.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invitation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgMembership"
+
+  /api/v1/invitations/{token}/decline:
+    post:
+      operationId: declineInvitation
+      tags: [Organizations]
+      summary: Decline invitation
+      description: Decline an organization invitation.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invitation declined
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/usage:
+    get:
+      operationId: getUsage
+      tags: [Organizations]
+      summary: Get usage
+      description: Get current organization usage statistics.
+      responses:
+        "200":
+          description: Usage stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Usage"
+
+  /api/v1/surveys:
+    post:
+      operationId: createSurvey
+      tags: [Surveys]
+      summary: Create survey
+      description: Create a new survey.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSurveyRequest"
+      responses:
+        "201":
+          description: Survey created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: listSurveys
+      tags: [Surveys]
+      summary: List surveys
+      description: List surveys for the current organization with filtering and pagination.
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, published, closed]
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+        - name: sort_dir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Survey list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/v1/surveys/{surveyId}:
+    get:
+      operationId: getSurvey
+      tags: [Surveys]
+      summary: Get survey
+      description: Get a survey by ID.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Survey details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Wrong organization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      operationId: updateSurvey
+      tags: [Surveys]
+      summary: Update survey
+      description: Update a survey (partial update).
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSurveyRequest"
+      responses:
+        "200":
+          description: Survey updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+    delete:
+      operationId: deleteSurvey
+      tags: [Surveys]
+      summary: Delete survey
+      description: Soft-delete a survey.
+      parameters:
+        $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Survey deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/surveys/{surveyId}/publish:
+    post:
+      operationId: publishSurvey
+      tags: [Surveys]
+      summary: Publish survey
+      description: Publish a survey so it can accept responses.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Survey published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+        "400":
+          description: Survey has no questions or not in draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/surveys/{surveyId}/close:
+    post:
+      operationId: closeSurvey
+      tags: [Surveys]
+      summary: Close survey
+      description: Close a published survey to stop accepting responses.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Survey closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+
+  /api/v1/surveys/{surveyId}/duplicate:
+    post:
+      operationId: duplicateSurvey
+      tags: [Surveys]
+      summary: Duplicate survey
+      description: Create a copy of a survey.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "201":
+          description: Survey duplicated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+
+  /api/v1/surveys/{surveyId}/qr-code:
+    get:
+      operationId: getQRCode
+      tags: [Distribution]
+      summary: Get QR code
+      description: Generate a QR code for a survey.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: size
+          in: query
+          schema:
+            type: integer
+        - name: error_level
+          in: query
+          schema:
+            type: string
+            enum: [L, M, Q, H]
+      responses:
+        "200":
+          description: QR code generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QRCodeResponse"
+
+  /api/v1/surveys/{surveyId}/embed-code:
+    get:
+      operationId: getEmbedCode
+      tags: [Distribution]
+      summary: Get embed code
+      description: Get HTML/JS embed code for a survey.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [popup, embedded, fullpage]
+        - name: trigger
+          in: query
+          schema:
+            type: string
+            enum: [auto, button, custom]
+        - name: width
+          in: query
+          schema:
+            type: string
+        - name: height
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Embed code generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmbedCodeResponse"
+
+  /api/v1/surveys/{surveyId}/live:
+    get:
+      operationId: liveUpdates
+      tags: [Surveys]
+      summary: Live updates
+      description: Server-Sent Events stream for live response updates.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/v1/public/surveys/{surveyId}:
+    get:
+      operationId: getPublicSurvey
+      tags: [Surveys]
+      summary: Get public survey
+      description: Get a published survey for public viewing (no auth required).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Public survey
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSurvey"
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "400":
+          description: Survey not published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/surveys/{surveyId}/responses:
+    post:
+      operationId: submitResponse
+      tags: [Responses]
+      summary: Submit response
+      description: Submit a survey response (public, no auth required).
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitResponseRequest"
+      responses:
+        "201":
+          description: Response submitted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmitResponseResponse"
+        "400":
+          description: Invalid request or survey not accepting responses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      operationId: listResponses
+      tags: [Responses]
+      summary: List responses
+      description: List responses for a survey with filtering and pagination.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [in_progress, completed, disqualified, partial]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Response list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedResponse"
+
+  /api/v1/surveys/{surveyId}/responses/{responseId}:
+    get:
+      operationId: getResponse
+      tags: [Responses]
+      summary: Get response
+      description: Get a single response with its answers.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: responseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Response details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResponseDetail"
+        "404":
+          description: Response not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: deleteResponse
+      tags: [Responses]
+      summary: Delete response
+      description: Delete a survey response.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: responseId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Response deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+
+  /api/v1/surveys/{surveyId}/responses/export:
+    post:
+      operationId: exportResponses
+      tags: [Responses]
+      summary: Export responses
+      description: Export survey responses in various formats.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                format:
+                  type: string
+                  enum: [json, csv, xlsx]
+                status:
+                  type: string
+                date_from:
+                  type: string
+                  format: date
+                date_to:
+                  type: string
+                  format: date
+      responses:
+        "200":
+          description: Export data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportResponse"
+
+  /api/v1/surveys/{surveyId}/analytics/summary:
+    get:
+      operationId: getAnalyticsSummary
+      tags: [Analytics]
+      summary: Analytics summary
+      description: Get overall analytics for a survey.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Analytics summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyticsSummary"
+
+  /api/v1/surveys/{surveyId}/analytics/questions/{questionId}:
+    get:
+      operationId: getQuestionStats
+      tags: [Analytics]
+      summary: Question stats
+      description: Get statistics for a specific question.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: questionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Question statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuestionStats"
+
+  /api/v1/surveys/{surveyId}/analytics/cross-tab:
+    get:
+      operationId: getCrossTab
+      tags: [Analytics]
+      summary: Cross-tabulation
+      description: Get cross-tabulation data between two questions.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+        - name: row_question_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: col_question_id
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Cross-tabulation data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CrossTabResponse"
+        "400":
+          description: Missing query parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/surveys/{surveyId}/analytics/dropoff:
+    get:
+      operationId: getDropoff
+      tags: [Analytics]
+      summary: Dropoff rates
+      description: Get question-by-question dropoff rates.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: Dropoff data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DropoffResponse"
+
+  /api/v1/surveys/{surveyId}/analytics/ai-insights:
+    post:
+      operationId: getAIInsights
+      tags: [Analytics]
+      summary: AI insights
+      description: Get AI-generated insights about survey responses.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "200":
+          description: AI insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AIInsightsResponse"
+
+  /api/v1/templates:
+    get:
+      operationId: listTemplates
+      tags: [Templates]
+      summary: List templates
+      description: List available templates (system + custom).
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Template"
+    post:
+      operationId: saveAsTemplate
+      tags: [Templates]
+      summary: Save as template
+      description: Save a survey as a custom template.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveTemplateRequest"
+      responses:
+        "201":
+          description: Template created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+
+  /api/v1/templates/{templateId}:
+    get:
+      operationId: getTemplate
+      tags: [Templates]
+      summary: Get template
+      description: Get a template by ID.
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+        "404":
+          description: Template not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/templates/{templateId}/duplicate:
+    post:
+      operationId: duplicateTemplate
+      tags: [Templates]
+      summary: Duplicate template
+      description: Create a survey from a template.
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Survey created from template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+
+  /api/v1/surveys/from-template/{templateId}:
+    post:
+      operationId: createFromTemplate
+      tags: [Templates]
+      summary: Create from template
+      description: Create a new survey from a template.
+      parameters:
+        - name: templateId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "201":
+          description: Survey created from template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Survey"
+
+  /api/v1/email-lists:
+    get:
+      operationId: listEmailLists
+      tags: [Distribution]
+      summary: List email lists
+      description: List email lists for the organization.
+      responses:
+        "200":
+          description: Email list array
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/EmailList"
+    post:
+      operationId: createEmailList
+      tags: [Distribution]
+      summary: Create email list
+      description: Create a new email list with optional contacts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmailListRequest"
+      responses:
+        "201":
+          description: Email list created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailList"
+
+  /api/v1/email-lists/{listId}:
+    get:
+      operationId: getEmailList
+      tags: [Distribution]
+      summary: Get email list
+      description: Get email list details.
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    put:
+      operationId: updateEmailList
+      tags: [Distribution]
+      summary: Update email list
+      description: Update an email list.
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    delete:
+      operationId: deleteEmailList
+      tags: [Distribution]
+      summary: Delete email list
+      description: Delete an email list.
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/email-lists/{listId}/contacts:
+    post:
+      operationId: addContacts
+      tags: [Distribution]
+      summary: Add contacts
+      description: Add contacts to an email list.
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/email-lists/{listId}/contacts/{contactId}:
+    delete:
+      operationId: removeContact
+      tags: [Distribution]
+      summary: Remove contact
+      description: Remove a contact from an email list.
+      parameters:
+        - name: listId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: contactId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/surveys/{surveyId}/send-emails:
+    post:
+      operationId: sendSurveyEmails
+      tags: [Distribution]
+      summary: Send survey emails
+      description: Send a survey to an email list.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendEmailsRequest"
+      responses:
+        "200":
+          description: Emails queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SendEmailsResponse"
+
+  /api/v1/surveys/{surveyId}/email/campaigns:
+    get:
+      operationId: listEmailCampaigns
+      tags: [Distribution]
+      summary: List email campaigns
+      description: List email campaigns for a survey.
+      parameters:
+        - $ref: "#/components/parameters/SurveyId"
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/billing/plan:
+    get:
+      operationId: getPlan
+      tags: [Billing]
+      summary: Get current plan
+      description: Get the current organization's billing plan.
+      responses:
+        "200":
+          description: Current plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPlan"
+
+  /api/v1/billing/plans:
+    get:
+      operationId: listPlans
+      tags: [Billing]
+      summary: List plans
+      description: List all available billing plans.
+      responses:
+        "200":
+          description: Available plans
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/BillingPlanItem"
+
+  /api/v1/billing/change-plan:
+    post:
+      operationId: changePlan
+      tags: [Billing]
+      summary: Change plan
+      description: Initiate a plan change via Stripe checkout.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangePlanRequest"
+      responses:
+        "200":
+          description: Checkout URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangePlanResponse"
+
+  /api/v1/billing/portal:
+    get:
+      operationId: getPortalURL
+      tags: [Billing]
+      summary: Get portal URL
+      description: Get the Stripe customer portal URL.
+      responses:
+        "200":
+          description: Portal URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortalURLResponse"
+
+  /api/v1/billing/history:
+    get:
+      operationId: getBillingHistory
+      tags: [Billing]
+      summary: Billing history
+      description: Get invoice and payment history.
+      responses:
+        "200":
+          description: Invoice history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invoice"
+
+  /api/v1/files/upload:
+    post:
+      operationId: uploadFile
+      tags: [Files]
+      summary: Upload file
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/files:
+    get:
+      operationId: listFiles
+      tags: [Files]
+      summary: List files
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/files/{fileId}:
+    delete:
+      operationId: deleteFile
+      tags: [Files]
+      summary: Delete file
+      parameters:
+        - name: fileId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/integrations:
+    get:
+      operationId: listIntegrations
+      tags: [Integrations]
+      summary: List integrations
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    post:
+      operationId: createIntegration
+      tags: [Integrations]
+      summary: Create integration
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/integrations/{integrationId}:
+    put:
+      operationId: updateIntegration
+      tags: [Integrations]
+      summary: Update integration
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    delete:
+      operationId: deleteIntegration
+      tags: [Integrations]
+      summary: Delete integration
+      parameters:
+        - name: integrationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/api-keys:
+    get:
+      operationId: listAPIKeys
+      tags: [API Keys]
+      summary: List API keys
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    post:
+      operationId: createAPIKey
+      tags: [API Keys]
+      summary: Create API key
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/api-keys/{keyId}:
+    delete:
+      operationId: revokeAPIKey
+      tags: [API Keys]
+      summary: Revoke API key
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/webhooks:
+    get:
+      operationId: listWebhooks
+      tags: [Webhooks]
+      summary: List webhooks
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    post:
+      operationId: createWebhook
+      tags: [Webhooks]
+      summary: Create webhook
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/webhooks/{webhookId}:
+    put:
+      operationId: updateWebhook
+      tags: [Webhooks]
+      summary: Update webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+    delete:
+      operationId: deleteWebhook
+      tags: [Webhooks]
+      summary: Delete webhook
+      parameters:
+        - name: webhookId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /api/v1/audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [Audit Logs]
+      summary: List audit logs
+      responses:
+        "501":
+          description: Not implemented
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StubError"
+
+  /webhooks/stripe:
+    post:
+      operationId: stripeWebhook
+      tags: [Billing]
+      summary: Stripe webhook
+      description: Receive Stripe webhook events.
+      security: []
+      responses:
+        "200":
+          description: Webhook received
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      received:
+                        type: boolean
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SurveyId:
+      name: surveyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OrgId:
+      name: orgId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: BAD_REQUEST
+        message:
+          type: string
+          example: invalid request body
+
+    StubError:
+      type: object
+      properties:
+        code:
+          type: string
+          example: NOT_IMPLEMENTED
+        message:
+          type: string
+          example: endpoint not yet implemented
+        endpoint:
+          type: string
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        deps:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [ok, error]
+            redis:
+              type: string
+              enum: [ok, error]
+
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            access_token:
+              type: string
+            refresh_token:
+              type: string
+            expires_at:
+              type: string
+              format: date-time
+
+    AuthResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            user:
+              $ref: "#/components/schemas/User"
+            tokens:
+              type: object
+              properties:
+                access_token:
+                  type: string
+                refresh_token:
+                  type: string
+                expires_at:
+                  type: string
+                  format: date-time
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        two_factor_enabled:
+          type: boolean
+        org_id:
+          type: string
+          format: uuid
+        org_name:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+        created_at:
+          type: string
+          format: date-time
+
+    UpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password:
+          type: string
+        new_password:
+          type: string
+          minLength: 8
+          maxLength: 128
+
+    CreateOrgRequest:
+      type: object
+      required: [name, slug]
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+
+    UpdateOrgRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        billing_email:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        plan:
+          type: string
+        response_limit:
+          type: integer
+        survey_limit:
+          type: integer
+        member_limit:
+          type: integer
+        ai_credits:
+          type: integer
+        settings:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    OrgMember:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+        invited_by:
+          type: string
+          format: uuid
+        joined_at:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: string
+              format: email
+            name:
+              type: string
+            avatar_url:
+              type: string
+              nullable: true
+
+    InviteMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [owner, admin, member, viewer]
+
+    Invitation:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        invited_by:
+          type: string
+          format: uuid
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    OrgMembership:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        role:
+          type: string
+        joined_at:
+          type: string
+          format: date-time
+
+    Usage:
+      type: object
+      properties:
+        surveys:
+          type: integer
+        responses:
+          type: integer
+        members:
+          type: integer
+        ai_credits:
+          type: object
+          properties:
+            limit:
+              type: integer
+            used:
+              type: integer
+
+    CreateSurveyRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+        ui_mode:
+          type: string
+          enum: [classic, minimal, cards, conversational]
+
+    UpdateSurveyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        ui_mode:
+          type: string
+          enum: [classic, minimal, cards, conversational]
+        status:
+          type: string
+        structure:
+          $ref: "#/components/schemas/SurveyStructure"
+        settings:
+          $ref: "#/components/schemas/SurveySettings"
+        theme:
+          $ref: "#/components/schemas/SurveyTheme"
+
+    SurveyStructure:
+      type: object
+      description: Survey structure defining questions, blocks, and flow.
+      properties:
+        questions:
+          type: array
+          items:
+            $ref: "#/components/schemas/QuestionDef"
+        blocks:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlockDef"
+        flow:
+          type: array
+          items:
+            $ref: "#/components/schemas/FlowStep"
+
+    QuestionDef:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          enum: [text, textarea, rating, single_choice, multiple_choice, dropdown, yes_no, date, time, number, email, phone, file_upload, image_choice, ranking, slider]
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              label:
+                type: string
+              value:
+                type: string
+        settings:
+          type: object
+          additionalProperties: true
+
+    BlockDef:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+        settings:
+          type: object
+          additionalProperties: true
+
+    FlowStep:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+
+    SurveySettings:
+      type: object
+      description: Survey behavior settings.
+      properties:
+        is_anonymous:
+          type: boolean
+        allow_multiple_responses:
+          type: boolean
+        show_progress_bar:
+          type: boolean
+        show_question_numbers:
+          type: boolean
+        shuffle_questions:
+          type: boolean
+        shuffle_options:
+          type: boolean
+        require_all_questions:
+          type: boolean
+        show_welcome_screen:
+          type: boolean
+        welcome_title:
+          type: string
+        welcome_message:
+          type: string
+        show_thank_you_screen:
+          type: boolean
+        thank_you_title:
+          type: string
+        thank_you_message:
+          type: string
+        redirect_url:
+          type: string
+        deadline:
+          type: string
+          format: date-time
+        max_responses:
+          type: integer
+        estimated_duration:
+          type: integer
+        background_image:
+          type: string
+        logo_image:
+          type: string
+        favicon:
+          type: string
+        custom_css:
+          type: string
+        custom_js:
+          type: string
+
+    SurveyTheme:
+      type: object
+      description: Survey visual theme customization.
+      properties:
+        colors:
+          type: object
+          properties:
+            primary:
+              type: string
+            secondary:
+              type: string
+            accent:
+              type: string
+            background:
+              type: string
+            text:
+              type: string
+            button:
+              type: string
+        font:
+          type: object
+          properties:
+            family:
+              type: string
+            size:
+              type: string
+            heading_weight:
+              type: string
+        border_radius:
+          type: integer
+        background_image:
+          type: string
+        background_color:
+          type: string
+        logo_image:
+          type: string
+
+    Survey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        created_by:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [draft, published, closed]
+        ui_mode:
+          type: string
+        structure:
+          $ref: "#/components/schemas/SurveyStructure"
+        settings:
+          $ref: "#/components/schemas/SurveySettings"
+        theme:
+          $ref: "#/components/schemas/SurveyTheme"
+        response_count:
+          type: integer
+        view_count:
+          type: integer
+        published_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    PublicSurvey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        ui_mode:
+          type: string
+        structure:
+          $ref: "#/components/schemas/SurveyStructure"
+        settings:
+          $ref: "#/components/schemas/SurveySettings"
+        theme:
+          $ref: "#/components/schemas/SurveyTheme"
+        share_url:
+          type: string
+          format: uri
+
+    SubmitResponseRequest:
+      type: object
+      required: [answers]
+      properties:
+        answers:
+          type: array
+          items:
+            type: object
+            required: [question_id]
+            properties:
+              question_id:
+                type: string
+              value:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: array
+                  - type: boolean
+                  - type: object
+                  - type: null
+        metadata:
+          type: object
+          properties:
+            duration:
+              type: integer
+            source:
+              type: string
+            device:
+              type: string
+            browser:
+              type: string
+            os:
+              type: string
+            country:
+              type: string
+            ip_hash:
+              type: string
+            language:
+              type: string
+            embedded_data:
+              type: object
+              additionalProperties: true
+
+    SubmitResponseResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            success:
+              type: boolean
+            response_id:
+              type: string
+              format: uuid
+            redirect_url:
+              type: string
+
+    ResponseDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        survey_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress, completed, disqualified, partial]
+        duration_ms:
+          type: integer
+          nullable: true
+        source:
+          type: string
+        language:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        answers:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+                format: uuid
+              response_id:
+                type: string
+                format: uuid
+              question_id:
+                type: string
+              value:
+                oneOf:
+                  - type: string
+                  - type: number
+                  - type: array
+                  - type: object
+              metadata:
+                type: object
+                additionalProperties: true
+              created_at:
+                type: string
+                format: date-time
+
+    ExportResponse:
+      type: object
+      properties:
+        data:
+          type: string
+          description: Exported data in the requested format
+        format:
+          type: string
+
+    PaginatedResponse:
+      type: object
+      properties:
+        data:
+          type: array
+        next_cursor:
+          type: string
+          description: Base64-encoded cursor for the next page. Empty string if no more results.
+        total:
+          type: integer
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        total_responses:
+          type: integer
+        completed_responses:
+          type: integer
+        completion_rate:
+          type: number
+        avg_duration_ms:
+          type: integer
+        total_views:
+          type: integer
+        conversion_rate:
+          type: number
+        first_response_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_response_at:
+          type: string
+          format: date-time
+          nullable: true
+        daily_counts:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              count:
+                type: integer
+        device_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        browser_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        country_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        source_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+
+    QuestionStats:
+      type: object
+      properties:
+        question_id:
+          type: string
+        question_type:
+          type: string
+        question_title:
+          type: string
+        total_answers:
+          type: integer
+        skipped_count:
+          type: integer
+        choice_stats:
+          type: array
+          items:
+            type: object
+            properties:
+              choice_id:
+                type: string
+              label:
+                type: string
+              count:
+                type: integer
+              percentage:
+                type: number
+        numeric_stats:
+          type: object
+          properties:
+            mean:
+              type: number
+            median:
+              type: number
+            min:
+              type: number
+            max:
+              type: number
+            std_dev:
+              type: number
+        text_stats:
+          type: object
+          properties:
+            total_words:
+              type: integer
+            avg_word_count:
+              type: number
+            top_keywords:
+              type: array
+              items:
+                type: string
+            sentiment_score:
+              type: number
+              nullable: true
+
+    CrossTabResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            row_question_id:
+              type: string
+            column_question_id:
+              type: string
+            headers:
+              type: array
+              items:
+                type: string
+            rows:
+              type: array
+              items:
+                type: object
+                properties:
+                  label:
+                    type: string
+                  values:
+                    type: array
+                    items:
+                      type: integer
+                  total:
+                    type: integer
+
+    DropoffResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  step_id:
+                    type: string
+                  step_type:
+                    type: string
+                  step_label:
+                    type: string
+                  views:
+                    type: integer
+                  dropoffs:
+                    type: integer
+                  dropoff_rate:
+                    type: number
+
+    AIInsightsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            summary:
+              type: string
+            key_findings:
+              type: array
+              items:
+                type: string
+            recommendations:
+              type: array
+              items:
+                type: string
+            sentiment:
+              type: string
+            themes:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  description:
+                    type: string
+                  confidence:
+                    type: number
+                  mentions:
+                    type: integer
+            anomalies:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                  description:
+                    type: string
+                  severity:
+                    type: string
+                    enum: [low, medium, high]
+                  question_id:
+                    type: string
+            generated_at:
+              type: string
+              format: date-time
+
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        structure:
+          $ref: "#/components/schemas/SurveyStructure"
+        theme:
+          $ref: "#/components/schemas/SurveyTheme"
+        cover_image_url:
+          type: string
+          nullable: true
+        is_featured:
+          type: boolean
+        use_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SaveTemplateRequest:
+      type: object
+      required: [survey_id, name]
+      properties:
+        survey_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        category:
+          type: string
+
+    EmailList:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        org_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        contact_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreateEmailListRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        contacts:
+          type: array
+          items:
+            type: object
+            required: [email]
+            properties:
+              email:
+                type: string
+                format: email
+              first_name:
+                type: string
+              last_name:
+                type: string
+              metadata:
+                type: object
+                additionalProperties: true
+
+    SendEmailsRequest:
+      type: object
+      required: [list_id, subject]
+      properties:
+        list_id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        body:
+          type: string
+        schedule_at:
+          type: string
+          format: date-time
+
+    SendEmailsResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            job_id:
+              type: string
+              format: uuid
+            count:
+              type: integer
+            status:
+              type: string
+
+    QRCodeResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            svg:
+              type: string
+            png_url:
+              type: string
+              nullable: true
+
+    EmbedCodeResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            html:
+              type: string
+            js:
+              type: string
+
+    BillingPlan:
+      type: object
+      properties:
+        plan_id:
+          type: string
+        plan_name:
+          type: string
+        billing_period:
+          type: string
+        status:
+          type: string
+        trial_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        next_billing_date:
+          type: string
+          format: date-time
+          nullable: true
+        limits:
+          type: object
+          properties:
+            surveys:
+              type: integer
+            responses:
+              type: integer
+            members:
+              type: integer
+            email_campaigns:
+              type: integer
+            ai_credits:
+              type: integer
+        usage:
+          type: object
+          properties:
+            surveys:
+              type: integer
+            responses:
+              type: integer
+            members:
+              type: integer
+            email_campaigns:
+              type: integer
+            ai_credits:
+              type: integer
+
+    BillingPlanItem:
+      type: object
+      properties:
+        plan_id:
+          type: string
+        plan_name:
+          type: string
+        billing_period:
+          type: string
+        price_monthly:
+          type: number
+        price_yearly:
+          type: number
+        response_limit:
+          type: integer
+        survey_limit:
+          type: integer
+        member_limit:
+          type: integer
+        ai_credits:
+          type: integer
+        features:
+          type: array
+          items:
+            type: string
+
+    ChangePlanRequest:
+      type: object
+      required: [plan_id]
+      properties:
+        plan_id:
+          type: string
+        billing_period:
+          type: string
+        success_url:
+          type: string
+        cancel_url:
+          type: string
+
+    ChangePlanResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            checkout_url:
+              type: string
+
+    PortalURLResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            url:
+              type: string
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+        invoice_url:
+          type: string
+          paid_at:
+            type: string
+            format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
