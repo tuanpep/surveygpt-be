@@ -2,7 +2,6 @@ package db
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"time"
 
@@ -25,10 +24,8 @@ func NewRedisClient(ctx context.Context, cfg *config.Config) (*redis.Client, err
 	opts.ReadTimeout = 3 * time.Second
 	opts.WriteTimeout = 3 * time.Second
 
-	// Enable TLS in production if not already configured.
-	if cfg.IsProduction() && opts.TLSConfig == nil {
-		opts.TLSConfig = &tls.Config{}
-	}
+	// Enable TLS in production if the URL uses rediss:// (TLS scheme).
+	// Railway internal connections (redis://) don't use TLS.
 
 	client := redis.NewClient(opts)
 
