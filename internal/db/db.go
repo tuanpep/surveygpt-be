@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -22,10 +23,10 @@ func NewPool(ctx context.Context, cfg *config.Config) (*pgxpool.Pool, error) {
 	poolConfig.MinConns = cfg.DB.MinConns
 	// pgxpool default is 30s; only override if explicitly configured.
 
-	// Enforce SSL in production if not explicitly configured.
-	if cfg.IsProduction() && poolConfig.ConnConfig.RuntimeParams["sslmode"] == "" {
-		poolConfig.ConnConfig.RuntimeParams = map[string]string{
-			"sslmode": "require",
+	// Enforce SSL in production if not explicitly configured via DATABASE_URL.
+	if cfg.IsProduction() && poolConfig.ConnConfig.TLSConfig == nil {
+		poolConfig.ConnConfig.TLSConfig = &tls.Config{
+			MinVersion: tls.VersionTLS12,
 		}
 	}
 
