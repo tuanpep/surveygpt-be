@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"github.com/surveyflow/be/internal/config"
 	"github.com/surveyflow/be/internal/db"
 	"github.com/surveyflow/be/internal/workers"
@@ -58,7 +59,8 @@ func run() error {
 	slog.Info("connected to redis")
 
 	// Initialize Asynq client for enqueueing retry tasks.
-	asynqClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisURL})
+	asynqRedisOpt := asynqRedisOptFromURL(cfg.RedisURL)
+	asynqClient := asynq.NewClient(asynqRedisOpt)
 	defer asynqClient.Close()
 	workers.SetAsynqClient(asynqClient)
 
@@ -68,9 +70,8 @@ func run() error {
 
 	// Create Asynq server with prioritized queues.
 	// critical: high priority (6 concurrency), default: normal (3), low: background (1).
-	redisOpt := asynq.RedisClientOpt{Addr: cfg.RedisURL}
 	srv := asynq.NewServer(
-		redisOpt,
+		asynqRedisOpt,
 		asynq.Config{
 			Concurrency:     10,
 			Queues: map[string]int{
@@ -181,4 +182,18 @@ func (l *asynqLogger) Error(args ...any) {
 func (l *asynqLogger) Fatal(args ...any) {
 	slog.Error(fmt.Sprint(args...))
 	os.Exit(1)
+}
+
+// asynqRedisOptFromURL parses a Redis URL and returns an asynq.RedisClientOpt.
+func asynqRedisOptFromURL(rawURL string) asynq.RedisClientOpt {
+	opts, err := redis.ParseURL(rawURL)
+	if err != nil {
+		return asynq.RedisClientOpt{Addr: rawURL}
+	}
+	return asynq.RedisClientOpt{
+		Addr:     opts.Addr,
+		Username: opts.Username,
+		Password: opts.Password,
+		DB:      opts.DB,
+	}
 }
